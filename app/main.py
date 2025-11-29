@@ -11,7 +11,7 @@ app = FastAPI()
 def startup():
     init_db()
 
-@app.post("/signup", response_model=UserResponse)
+@app.post("/users/register", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
@@ -33,14 +33,14 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(new_user)
     return new_user
 
-@app.post("/login")
+@app.post("/users/login")
 def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if not db_user or not verify_password(user.password, db_user.password):
         raise HTTPException(status_code=400, detail="Invalid credentials")
     return {"message": "Login successful", "user_id": db_user.id, "username": db_user.username}
 
-@app.post("/password-change/{username}")
+@app.put("/users/{username}/password")
 def change_password(username: str, password_data: PasswordChange, db: Session = Depends(get_db)):
 
     db_user = db.query(models.User).filter(models.User.username == username).first()
@@ -54,7 +54,7 @@ def change_password(username: str, password_data: PasswordChange, db: Session = 
     db.commit()
     return {"message": "Password changed successfully"}
 
-@app.delete("/user/{username}")
+@app.delete("/users/{username}")
 def delete_user(username: str, credentials: UserLogin, db: Session = Depends(get_db)):
 
     db_user = db.query(models.User).filter(models.User.username == username).first()
