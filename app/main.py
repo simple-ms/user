@@ -1,8 +1,9 @@
 from fastapi import FastAPI, HTTPException, Depends
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from .database import get_db, init_db
 from . import models
+from .schemas import UserCreate, UserLogin, PasswordChange, UserResponse
+from .auth import hash_password, verify_password
 
 app = FastAPI()
 
@@ -10,31 +11,57 @@ app = FastAPI()
 def startup():
     init_db()
 
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-
-@app.post("/signup")
+@app.post("/signup", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if db_user:
         raise HTTPException(status_code=400, detail="User already exists")
     
+    db_email = db.query(models.User).filter(models.User.email == user.email).first()
+    if db_email:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = hash_password(user.password)
     new_user = models.User(
         username=user.username,
         email=user.email,
-        password=user.password
+        password=hashed_password
     )
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"message": "User created successfully"}
+    return new_user
 
 @app.post("/login")
-def login(user: UserCreate, db: Session = Depends(get_db)):
+def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if not db_user or db_user.password != user.password:
+    if not db_user or not verify_password(user.password, db_user.password):
         raise HTTPException(status_code=400, detail="Invalid credentials")
-    return {"message": "Login successful"}
+    return {"message": "Login successful", "user_id": db_user.id, "username": db_user.username}
+
+@app.post("/password-change/{username}")
+def change_password(username: str, password_data: PasswordChange, db: Session = Depends(get_db)):
+
+    db_user = db.query(models.User).filter(models.User.username == username).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if not verify_password(password_data.old_password, db_user.password):
+        raise HTTPException(status_code=400, detail="Invalid old password")
+    
+    db_user.password = hash_password(password_data.new_password)
+    db.commit()
+    return {"message": "Password changed successfully"}
+
+@app.delete("/user/{username}")
+def delete_user(username: str, db: Session = Depends(get_db)):
+
+    db_user = db.query(models.User).filter(models.User.username == username).first()
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+
+    db.delete(db_user)
+    db.commit()
+    return {"message": "User deleted successfully"}
