@@ -50,17 +50,14 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
         "username": db_user.username
     }
 
-@app.put("/users/{username}/password")
+@app.put("/users/password")
 def change_password(
-    username: str,
     password_data: PasswordChange,
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token)
 ):
-
-    if token_data.get("sub") != username:
-        raise HTTPException(status_code=403, detail="Not authorized to change this user's password")
-
+    username = token_data.get("sub")
+    
     db_user = db.query(models.User).filter(models.User.username == username).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -72,17 +69,14 @@ def change_password(
     db.commit()
     return {"message": "Password changed successfully"}
 
-@app.delete("/users/{username}")
+@app.delete("/users/me")
 def delete_user(
-    username: str,
     credentials: UserLogin,
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token)
 ):
+    username = token_data.get("sub")
     
-    if token_data.get("sub") != username:
-        raise HTTPException(status_code=403, detail="Not authorized to delete this user")
-
     db_user = db.query(models.User).filter(models.User.username == username).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
