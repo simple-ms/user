@@ -1,3 +1,4 @@
+from uuid import UUID
 from pydantic import BaseModel, EmailStr
 
 class UserCreate(BaseModel):
@@ -14,7 +15,7 @@ class PasswordChange(BaseModel):
     new_password: str
 
 class UserResponse(BaseModel):
-    id: int
+    id: UUID
     username: str
     email: str
 
