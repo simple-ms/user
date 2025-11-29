@@ -1,30 +1,37 @@
 services:
-  api:
+  user-api:
     build:
       context: .
       dockerfile: Dockerfile.local
-    container_name: user
+    container_name: user-api
     volumes:
       - ./app:/app/app
     ports:
       - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@user-db:5432/user_db
     command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
     depends_on:
       - user-db
-    env_file:
-      - .env
 
   user-db:
-    image: postgres:17
+    image: postgres:17-alpine
     container_name: user-db
     restart: always
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@user-db:5432/user_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: user_db
     ports:
       - "5432:5432"
     volumes:
       - user-db-data:/var/lib/postgresql/data
       # - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   user-db-data:
