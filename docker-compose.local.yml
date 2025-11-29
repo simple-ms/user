@@ -11,6 +11,9 @@ services:
       - "8001:8000"
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@user-db:5432/user_db
+      JWT_SECRET_KEY: "your-super-secret-jwt-key-change-in-production-min-32-chars"
+      JWT_ALGORITHM: "HS256"
+      JWT_EXPIRATION_MINUTES: "60"
     command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
     depends_on:
       - user-db
@@ -29,7 +32,7 @@ services:
       - user-db-data:/var/lib/postgresql/data
       # - ./pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 5s
       timeout: 5s
       retries: 5
