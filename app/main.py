@@ -55,12 +55,14 @@ def change_password(username: str, password_data: PasswordChange, db: Session = 
     return {"message": "Password changed successfully"}
 
 @app.delete("/user/{username}")
-def delete_user(username: str, db: Session = Depends(get_db)):
+def delete_user(username: str, credentials: UserLogin, db: Session = Depends(get_db)):
 
     db_user = db.query(models.User).filter(models.User.username == username).first()
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    if not verify_password(credentials.password, db_user.password):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
 
     db.delete(db_user)
     db.commit()
