@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
 from .database import get_db, Base, engine
 from . import models
-from .schemas import UserCreate, UserLogin, PasswordChange, UserResponse
+from .schemas import UserCreate, UserLogin, PasswordChange, UserDelete, UserResponse
 from .auth import hash_password, verify_password, create_access_token, verify_token
 
 app = FastAPI()
@@ -71,7 +71,7 @@ def change_password(
 
 @app.delete("/users/me")
 def delete_user(
-    credentials: UserLogin,
+    credentials: UserDelete,
     db: Session = Depends(get_db),
     token_data: dict = Depends(verify_token)
 ):
