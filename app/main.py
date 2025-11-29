@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from .database import get_db, Base, engine
 from . import models
 from .schemas import UserCreate, UserLogin, PasswordChange, UserResponse
-from .auth import hash_password, verify_password
+from .auth import hash_password, verify_password, create_access_token, verify_token
 
 app = FastAPI()
 
@@ -37,10 +37,29 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if not db_user or not verify_password(user.password, db_user.password):
         raise HTTPException(status_code=400, detail="Invalid credentials")
-    return {"message": "Login successful", "user_id": db_user.id, "username": db_user.username}
+    
+    access_token = create_access_token(
+        data={"sub": db_user.username, "user_id": db_user.id, "email": db_user.email}
+    )
+    
+    return {
+        "message": "Login successful",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": db_user.id,
+        "username": db_user.username
+    }
 
 @app.put("/users/{username}/password")
-def change_password(username: str, password_data: PasswordChange, db: Session = Depends(get_db)):
+def change_password(
+    username: str,
+    password_data: PasswordChange,
+    db: Session = Depends(get_db),
+    token_data: dict = Depends(verify_token)
+):
+
+    if token_data.get("sub") != username:
+        raise HTTPException(status_code=403, detail="Not authorized to change this user's password")
 
     db_user = db.query(models.User).filter(models.User.username == username).first()
     if not db_user:
@@ -54,7 +73,15 @@ def change_password(username: str, password_data: PasswordChange, db: Session = 
     return {"message": "Password changed successfully"}
 
 @app.delete("/users/{username}")
-def delete_user(username: str, credentials: UserLogin, db: Session = Depends(get_db)):
+def delete_user(
+    username: str,
+    credentials: UserLogin,
+    db: Session = Depends(get_db),
+    token_data: dict = Depends(verify_token)
+):
+    
+    if token_data.get("sub") != username:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this user")
 
     db_user = db.query(models.User).filter(models.User.username == username).first()
     if not db_user:
