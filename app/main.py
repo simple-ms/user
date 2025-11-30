@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, Security, Response
 from sqlalchemy.orm import Session
-from .database import get_db, Base, engine
+from .database import get_db, init_db
 from . import models
 from .schemas import UserCreate, UserLogin, PasswordChange, UserDelete, UserResponse
 from .auth import hash_password, verify_password, create_access_token, verify_token
@@ -10,11 +10,13 @@ app = FastAPI()
 
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
+    init_db()
     logger.info("User service started")
 
 @app.post("/users/register", response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    user: UserCreate, 
+    db: Session = Depends(get_db)):
     logger.info(f"Registration attempt for username: {user.username}")
     
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
