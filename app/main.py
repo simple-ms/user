@@ -8,8 +8,10 @@ from .logger import logger
 
 app = FastAPI()
 
-Base.metadata.create_all(bind=engine)
-
+@app.on_event("startup")
+def startup():
+    Base.metadata.create_all(bind=engine)
+    logger.info("User service started")
 
 @app.post("/users/register", response_model=UserResponse)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
