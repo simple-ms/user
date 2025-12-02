@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
-from .database import get_db, init_db
+from .database import get_db
 from .models import User
 from .schemas import PasswordChange, UserDelete
 from .auth import hash_password, verify_password
@@ -12,16 +13,14 @@ app = FastAPI(
     redoc_url="/redoc/user"
 )
 
-@app.on_event("startup")
-def startup():
-    init_db()
-    logger.info("User service started")
+security = HTTPBearer()
 
 @app.put("/users/password")
 def change_password(
     password_data: PasswordChange,
     db: Session = Depends(get_db),
-    x_user_id: str = Header(None, alias="X-User-Id")
+    x_user_id: str = Header(None, alias="X-User-Id"),
+    token: str = Depends(security)
 ):
     if not x_user_id:
         raise HTTPException(status_code=401, detail="Unauthorized")

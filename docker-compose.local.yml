@@ -11,7 +11,8 @@ services:
       - "8001:8000"
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@user-db:5432/user_db
-    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
     depends_on:
       - user-db
 
@@ -34,6 +35,17 @@ services:
       timeout: 5s
       retries: 5
 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: sabuhi@mail.com
+      PGADMIN_DEFAULT_PASSWORD: sabuhi123
+    container_name: pgadmin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
 volumes:
   user-db-data:
-    name: user-db-data
+  pgadmin_data:
