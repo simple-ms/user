@@ -1,13 +1,19 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from typing import List
+from fastapi import FastAPI, HTTPException, Depends, Header, status
 from fastapi.security import HTTPBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
+
 from .database import get_db
-from .models import User
-from .schemas import PasswordChange, UserDelete
-from .auth import hash_password, verify_password
+from .models import Address
+from .schemas import AddressCreate, AddressResponse
 from .logger import logger
 
 app = FastAPI(
+    title="User Service",
+    description="User profile and address management microservice",
+    version="1.0.0",
     docs_url="/docs/user",
     openapi_url="/openapi.json/user",
     redoc_url="/redoc/user"
@@ -15,74 +21,160 @@ app = FastAPI(
 
 security = HTTPBearer()
 
-@app.put("/users/password")
-def change_password(
-    password_data: PasswordChange,
-    db: Session = Depends(get_db),
+
+# --- HEALTH CHECK ---
+
+@app.get("/user/health", tags=["Health"])
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return {"status": "healthy", "service": "user-service"}
+
+
+# --- ADDRESS ENDPOINTS ---
+
+@app.post(
+    "/users/addresses",
+    response_model=AddressResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Addresses"]
+)
+async def add_address(
+    address: AddressCreate,
+    db: AsyncSession = Depends(get_db),
     x_user_id: str = Header(None, alias="X-User-Id"),
     token: str = Depends(security)
 ):
+    """
+    Add a new address for the authenticated user.
+    
+    User ID is extracted from X-User-Id header (set by Nginx after token validation).
+    """
     if not x_user_id:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+        logger.warning("Add address failed: Missing X-User-Id header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized"
+        )
 
-    logger.info(f"Password change request for user ID: {x_user_id}")
+    logger.info(f"Adding address for user {x_user_id}: {address.title}")
     
-    db_user = db.query(User).filter(User.id == x_user_id).first()
-    if not db_user:
-        logger.error(f"Password change failed: User for ID: '{x_user_id}' not found")
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        new_address = Address(
+            user_id=x_user_id,  # Link to the Auth User ID
+            title=address.title,
+            street=address.street,
+            city=address.city,
+            country=address.country,
+            zip_code=address.zip_code
+        )
+        db.add(new_address)
+        await db.commit()
+        await db.refresh(new_address)
+        
+        logger.info(f"Address created successfully: {new_address.id} for user {x_user_id}")
+        return new_address
+        
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Database error while adding address: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
 
-    if not verify_password(password_data.old_password, db_user.password):
-        logger.warning(f"Password change failed: Invalid old password for user ID '{x_user_id}'")
-        raise HTTPException(status_code=400, detail="Invalid old password")
-    
-    db_user.password = hash_password(password_data.new_password)
-    db.commit()
-    logger.info(f"Password changed successfully for user ID: {x_user_id}")
-    return {"message": "Password changed successfully"}
 
-@app.delete("/users/me")
-def delete_user(
-    credentials: UserDelete,
-    db: Session = Depends(get_db),
-    x_user_id: str = Header(None, alias="X-User-Id")
+@app.get(
+    "/users/addresses",
+    response_model=List[AddressResponse],
+    tags=["Addresses"]
+)
+async def get_addresses(
+    db: AsyncSession = Depends(get_db),
+    x_user_id: str = Header(None, alias="X-User-Id"),
+    token: str = Depends(security)
 ):
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    logger.info(f"User deletion request for ID: {x_user_id}")
+    """
+    Get all addresses for the authenticated user.
     
-    db_user = db.query(User).filter(User.id == x_user_id).first()
-    if not db_user:
-        logger.error(f"User deletion failed: User for ID: '{x_user_id}' not found")
-        raise HTTPException(status_code=404, detail="User not found")
+    User ID is extracted from X-User-Id header (set by Nginx after token validation).
+    """
+    if not x_user_id:
+        logger.warning("Get addresses failed: Missing X-User-Id header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized"
+        )
 
-    if not verify_password(credentials.password, db_user.password):
-        logger.warning(f"User deletion failed: Invalid credentials for user ID: '{x_user_id}'")
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+    logger.info(f"Fetching addresses for user {x_user_id}")
+    
+    try:
+        result = await db.execute(select(Address).filter(Address.user_id == x_user_id))
+        addresses = result.scalars().all()
+        
+        logger.info(f"Found {len(addresses)} addresses for user {x_user_id}")
+        return addresses
+        
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while fetching addresses: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
 
-    db.delete(db_user)
-    db.commit()
-    logger.info(f"User deleted successfully: {x_user_id}")
-    return {"message": "User deleted successfully"}
 
-@app.get("/users/me")
-def get_current_user(
-    db: Session = Depends(get_db),
-    x_user_id: str = Header(None, alias="X-User-Id")
+@app.delete(
+    "/users/addresses/{address_id}",
+    status_code=status.HTTP_200_OK,
+    tags=["Addresses"]
+)
+async def delete_address(
+    address_id: str,
+    db: AsyncSession = Depends(get_db),
+    x_user_id: str = Header(None, alias="X-User-Id"),
+    token: str = Depends(security)
 ):
-    logger.info(f"User info request for ID: {x_user_id}")
-
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-    db_user = db.query(User).filter(User.id == x_user_id).first()
-    if not db_user:
-        logger.error(f"User info request failed: User for ID: '{x_user_id}' not found")
-        raise HTTPException(status_code=404, detail="User not found")
+    """
+    Delete a specific address.
     
-    return {
-        "id": db_user.id,
-        "username": db_user.username,
-        "email": db_user.email
-    }
+    Only the owner of the address can delete it.
+    """
+    if not x_user_id:
+        logger.warning("Delete address failed: Missing X-User-Id header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized"
+        )
+
+    logger.info(f"Delete address attempt: {address_id} by user {x_user_id}")
+    
+    try:
+        result = await db.execute(
+            select(Address).filter(
+                Address.id == address_id,
+                Address.user_id == x_user_id  # Ensure user owns this address
+            )
+        )
+        address = result.scalar_one_or_none()
+        
+        if not address:
+            logger.warning(f"Address not found or unauthorized: {address_id}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Address not found"
+            )
+        
+        await db.delete(address)
+        await db.commit()
+        
+        logger.info(f"Address deleted successfully: {address_id}")
+        return {"message": "Address deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Database error while deleting address: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )

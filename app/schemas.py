@@ -1,26 +1,17 @@
+from pydantic import BaseModel
 from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from typing import List
 
-class UserCreate(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
+class AddressCreate(BaseModel):
+    title: str
+    street: str
+    city: str
+    country: str
+    zip_code: str
 
-class UserLogin(BaseModel):
-    username: str
-    password: str
-
-class UserDelete(BaseModel):
-    password: str
-
-class PasswordChange(BaseModel):
-    old_password: str
-    new_password: str
-
-class UserResponse(BaseModel):
+class AddressResponse(AddressCreate):
     id: UUID
-    username: str
-    email: str
+    user_id: UUID
 
     class Config:
         from_attributes = True

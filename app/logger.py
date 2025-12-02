@@ -2,7 +2,17 @@ import logging
 import sys
 from pythonjsonlogger import jsonlogger
 
+
 def get_logger(service_name: str):
+    """
+    Create a structured JSON logger for the service.
+    
+    Args:
+        service_name: Name of the service for log identification
+        
+    Returns:
+        Configured logger instance
+    """
     logger = logging.getLogger(service_name)
     
     if not logger.handlers:
@@ -17,5 +27,6 @@ def get_logger(service_name: str):
         logger.setLevel(logging.INFO)
         
     return logger
+
 
 logger = get_logger("user-service")
