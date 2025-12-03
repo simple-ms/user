@@ -1,6 +1,5 @@
 from typing import List
-from fastapi import FastAPI, HTTPException, Depends, Header, status
-from fastapi.security import HTTPBearer
+from fastapi import FastAPI, HTTPException, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select
@@ -9,6 +8,7 @@ from .database import get_db
 from .models import Address
 from .schemas import AddressCreate, AddressResponse
 from .logger import logger
+from .dependencies import get_current_user_id
 
 app = FastAPI(
     title="User Service",
@@ -18,8 +18,6 @@ app = FastAPI(
     openapi_url="/openapi.json/user",
     redoc_url="/redoc/user"
 )
-
-security = HTTPBearer()
 
 
 # --- HEALTH CHECK ---
@@ -41,26 +39,18 @@ async def health_check():
 async def add_address(
     address: AddressCreate,
     db: AsyncSession = Depends(get_db),
-    x_user_id: str = Header(None, alias="X-User-Id"),
-    token: str = Depends(security)
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Add a new address for the authenticated user.
     
     User ID is extracted from X-User-Id header (set by Nginx after token validation).
     """
-    if not x_user_id:
-        logger.warning("Add address failed: Missing X-User-Id header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized"
-        )
-
-    logger.info(f"Adding address for user {x_user_id}: {address.title}")
+    logger.info(f"Adding address for user {user_id}: {address.title}")
     
     try:
         new_address = Address(
-            user_id=x_user_id,  # Link to the Auth User ID
+            user_id=user_id,  # Link to the Auth User ID
             title=address.title,
             street=address.street,
             city=address.city,
@@ -71,7 +61,7 @@ async def add_address(
         await db.commit()
         await db.refresh(new_address)
         
-        logger.info(f"Address created successfully: {new_address.id} for user {x_user_id}")
+        logger.info(f"Address created successfully: {new_address.id} for user {user_id}")
         return new_address
         
     except SQLAlchemyError as e:
@@ -90,28 +80,20 @@ async def add_address(
 )
 async def get_addresses(
     db: AsyncSession = Depends(get_db),
-    x_user_id: str = Header(None, alias="X-User-Id"),
-    token: str = Depends(security)
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Get all addresses for the authenticated user.
     
     User ID is extracted from X-User-Id header (set by Nginx after token validation).
     """
-    if not x_user_id:
-        logger.warning("Get addresses failed: Missing X-User-Id header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized"
-        )
-
-    logger.info(f"Fetching addresses for user {x_user_id}")
+    logger.info(f"Fetching addresses for user {user_id}")
     
     try:
-        result = await db.execute(select(Address).filter(Address.user_id == x_user_id))
+        result = await db.execute(select(Address).filter(Address.user_id == user_id))
         addresses = result.scalars().all()
         
-        logger.info(f"Found {len(addresses)} addresses for user {x_user_id}")
+        logger.info(f"Found {len(addresses)} addresses for user {user_id}")
         return addresses
         
     except SQLAlchemyError as e:
@@ -130,28 +112,20 @@ async def get_addresses(
 async def delete_address(
     address_id: str,
     db: AsyncSession = Depends(get_db),
-    x_user_id: str = Header(None, alias="X-User-Id"),
-    token: str = Depends(security)
+    user_id: str = Depends(get_current_user_id)
 ):
     """
     Delete a specific address.
     
     Only the owner of the address can delete it.
     """
-    if not x_user_id:
-        logger.warning("Delete address failed: Missing X-User-Id header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized"
-        )
-
-    logger.info(f"Delete address attempt: {address_id} by user {x_user_id}")
+    logger.info(f"Delete address attempt: {address_id} by user {user_id}")
     
     try:
         result = await db.execute(
             select(Address).filter(
                 Address.id == address_id,
-                Address.user_id == x_user_id  # Ensure user owns this address
+                Address.user_id == user_id  # Ensure user owns this address
             )
         )
         address = result.scalar_one_or_none()
