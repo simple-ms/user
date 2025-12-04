@@ -1,6 +1,7 @@
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
-from sqlalchemy import String
+from sqlalchemy import String, DateTime, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
@@ -19,6 +20,22 @@ class Address(Base):
     city: Mapped[str] = mapped_column(String(100))
     country: Mapped[str] = mapped_column(String(100))
     zip_code: Mapped[str] = mapped_column(String(20))
+    
+    # Added timestamps for audit trail
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+    
+    # Composite index for common queries
+    __table_args__ = (
+        Index('idx_address_user_city', 'user_id', 'city'),
+    )
     
     def __repr__(self) -> str:
         return f"<Address(id={self.id}, user_id={self.user_id}, title={self.title})>"

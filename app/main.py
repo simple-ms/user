@@ -23,7 +23,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
+    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,9 +33,25 @@ app.add_middleware(
 # --- HEALTH CHECK ---
 
 @app.get("/user/health", tags=["Health"])
-async def health_check():
-    """Health check endpoint for monitoring."""
-    return {"status": "healthy", "service": "user-service"}
+async def health_check(db: AsyncSession = Depends(get_db)):
+    """Health check endpoint with database connectivity check."""
+    try:
+        await db.execute(select(1))
+        return {
+            "status": "healthy",
+            "service": "user-service",
+            "database": "connected"
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "status": "unhealthy",
+                "service": "user-service",
+                "database": "disconnected"
+            }
+        )
 
 
 # --- ADDRESS ENDPOINTS ---
@@ -60,7 +76,7 @@ async def add_address(
     
     try:
         new_address = Address(
-            user_id=user_id,  # Link to the Auth User ID
+            user_id=user_id,
             title=address.title,
             street=address.street,
             city=address.city,
@@ -90,17 +106,26 @@ async def add_address(
 )
 async def get_addresses(
     db: AsyncSession = Depends(get_db),
-    user_id: str = Depends(get_current_user_id)
+    user_id: str = Depends(get_current_user_id),
+    skip: int = 0,
+    limit: int = 50
 ):
     """
-    Get all addresses for the authenticated user.
+    Get all addresses for the authenticated user with pagination.
     
     User ID is extracted from X-User-Id header (set by Nginx after token validation).
     """
-    logger.info(f"Fetching addresses for user {user_id}")
+    limit = min(limit, 50)  # Cap at 50 addresses
+    
+    logger.info(f"Fetching addresses for user {user_id}: skip={skip}, limit={limit}")
     
     try:
-        result = await db.execute(select(Address).filter(Address.user_id == user_id))
+        result = await db.execute(
+            select(Address)
+            .filter(Address.user_id == user_id)
+            .offset(skip)
+            .limit(limit)
+        )
         addresses = result.scalars().all()
         
         logger.info(f"Found {len(addresses)} addresses for user {user_id}")
@@ -108,6 +133,98 @@ async def get_addresses(
         
     except SQLAlchemyError as e:
         logger.error(f"Database error while fetching addresses: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
+
+
+@app.get(
+    "/users/addresses/{address_id}",
+    response_model=AddressResponse,
+    tags=["Addresses"]
+)
+async def get_address(
+    address_id: str,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
+    """Get a specific address by ID."""
+    logger.info(f"Fetching address {address_id} for user {user_id}")
+    
+    try:
+        result = await db.execute(
+            select(Address).filter(
+                Address.id == address_id,
+                Address.user_id == user_id
+            )
+        )
+        address = result.scalar_one_or_none()
+        
+        if not address:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Address not found"
+            )
+        
+        return address
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while fetching address: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
+
+
+@app.put(
+    "/users/addresses/{address_id}",
+    response_model=AddressResponse,
+    tags=["Addresses"]
+)
+async def update_address(
+    address_id: str,
+    address_update: AddressCreate,
+    db: AsyncSession = Depends(get_db),
+    user_id: str = Depends(get_current_user_id)
+):
+    """Update an existing address."""
+    logger.info(f"Updating address {address_id} for user {user_id}")
+    
+    try:
+        result = await db.execute(
+            select(Address).filter(
+                Address.id == address_id,
+                Address.user_id == user_id
+            )
+        )
+        address = result.scalar_one_or_none()
+        
+        if not address:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Address not found"
+            )
+        
+        address.title = address_update.title
+        address.street = address_update.street
+        address.city = address_update.city
+        address.country = address_update.country
+        address.zip_code = address_update.zip_code
+        
+        await db.commit()
+        await db.refresh(address)
+        
+        logger.info(f"Address updated successfully: {address_id}")
+        return address
+        
+    except HTTPException:
+        raise
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logger.error(f"Database error while updating address: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error occurred"
@@ -135,7 +252,7 @@ async def delete_address(
         result = await db.execute(
             select(Address).filter(
                 Address.id == address_id,
-                Address.user_id == user_id  # Ensure user owns this address
+                Address.user_id == user_id
             )
         )
         address = result.scalar_one_or_none()
