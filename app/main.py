@@ -10,6 +10,7 @@ from .models import Address
 from .schemas import AddressCreate, AddressResponse
 from .logger import logger
 from .dependencies import get_current_user_id
+from .settings import cors_settings
 
 app = FastAPI(
     title="User Service",
@@ -20,13 +21,13 @@ app = FastAPI(
     redoc_url="/redoc/user"
 )
 
-# Add CORS middleware
+# Add CORS middleware with configurable settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_settings.origins_list,
+    allow_credentials=cors_settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=[cors_settings.CORS_ALLOW_METHODS],
+    allow_headers=[cors_settings.CORS_ALLOW_HEADERS],
 )
 
 
