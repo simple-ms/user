@@ -9,11 +9,17 @@ services:
       - ./app:/app/app
     ports:
       - "8001:8000"
-    environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:postgres@user-db:5432/user_db
     command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
     depends_on:
       - user-db
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8000/user/health || exit 1" ]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   user-db:
     image: postgres:17-alpine
@@ -47,4 +53,6 @@ services:
 
 volumes:
   user-db-data:
+    name: user-db-data
   pgadmin_data:
+    name: pgadmin_data
