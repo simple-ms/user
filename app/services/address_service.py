@@ -26,7 +26,8 @@ class AddressService:
                 street=address_data.street,
                 city=address_data.city,
                 country=address_data.country,
-                zip_code=address_data.zip_code
+                postal_code=address_data.postal_code,
+                is_default=address_data.is_default
             )
             address = await self.address_repository.create(new_address)
             logger.info(f"Address created successfully: {address.id} for user {user_id}")
@@ -101,7 +102,8 @@ class AddressService:
             address.street = address_data.street
             address.city = address_data.city
             address.country = address_data.country
-            address.zip_code = address_data.zip_code
+            address.postal_code = address_data.postal_code
+            address.is_default = address_data.is_default
             
             updated_address = await self.address_repository.update(address)
             logger.info(f"Address updated successfully: {address_id}")
