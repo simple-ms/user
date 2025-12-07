@@ -9,7 +9,8 @@ class AddressCreate(BaseModel):
     street: str = Field(..., min_length=1, max_length=255, description="Street address")
     city: str = Field(..., min_length=1, max_length=100, description="City name")
     country: str = Field(..., min_length=1, max_length=100, description="Country name")
-    zip_code: str = Field(..., min_length=1, max_length=20, description="Postal/ZIP code")
+    postal_code: str = Field(..., min_length=1, max_length=20, description="Postal/ZIP code")
+    is_default: bool = Field(default=False, description="Whether this is the default address")
     
     @field_validator('title', 'city', 'country')
     @classmethod
@@ -20,13 +21,13 @@ class AddressCreate(BaseModel):
             raise ValueError('Field cannot be empty or whitespace only')
         return v
     
-    @field_validator('zip_code')
+    @field_validator('postal_code')
     @classmethod
-    def validate_zip_code(cls, v: str) -> str:
-        """Validate ZIP code format."""
+    def validate_postal_code(cls, v: str) -> str:
+        """Validate postal code format."""
         v = v.strip()
         if not re.match(r'^[A-Za-z0-9\s\-]+$', v):
-            raise ValueError('ZIP code contains invalid characters')
+            raise ValueError('Postal code contains invalid characters')
         return v
 
 

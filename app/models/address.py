@@ -19,24 +19,27 @@ class Address(Base):
     street: Mapped[str] = mapped_column(String(255))
     city: Mapped[str] = mapped_column(String(100))
     country: Mapped[str] = mapped_column(String(100))
-    zip_code: Mapped[str] = mapped_column(String(20))
+    postal_code: Mapped[str] = mapped_column(String(20))
     
-    # Timestamps for audit trail
+    # Default address flag
+    is_default: Mapped[bool] = mapped_column(default=False, index=True)
+    
+    # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)
     )
-    updated_at: Mapped[Optional[datetime]] = mapped_column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        nullable=True,
+        default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
     )
     
-    # Composite index for common queries
+    # Indexes for efficient queries
     __table_args__ = (
-        Index('idx_address_user_city', 'user_id', 'city'),
+        Index('idx_address_user', 'user_id'),
+        Index('idx_address_user_default', 'user_id', 'is_default'),
     )
     
     def __repr__(self) -> str:
         return f"<Address(id={self.id}, user_id={self.user_id}, title={self.title})>"
-
